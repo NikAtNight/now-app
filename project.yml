@@ -1,0 +1,64 @@
+# Generate Now.xcodeproj with: xcodegen generate
+name: Now
+options:
+  bundleIdPrefix: com.nikhilkapadia
+  deploymentTarget:
+    iOS: "18.0"
+    macOS: "15.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ""  # Set to your Apple Developer team ID.
+    CODE_SIGN_STYLE: Automatic
+    PRODUCT_NAME: Now
+    PRODUCT_BUNDLE_IDENTIFIER: com.nikhilkapadia.now
+    GENERATE_INFOPLIST_FILE: YES
+    INFOPLIST_KEY_CFBundleDisplayName: Now
+    INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+
+packages:
+  NowCore:
+    path: NowCore
+
+targets:
+  Now-iOS:
+    type: application
+    platform: iOS
+    sources: [App, Resources]
+    dependencies:
+      - package: NowCore
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "1"
+        INFOPLIST_FILE: Config/Info-iOS.plist
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        CODE_SIGN_ENTITLEMENTS: Config/Now-iOS.entitlements
+
+  Now-macOS:
+    type: application
+    platform: macOS
+    sources: [App, Resources]
+    dependencies:
+      - package: NowCore
+    settings:
+      base:
+        CODE_SIGN_ENTITLEMENTS: Config/Now-macOS.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
+
+schemes:
+  Now-iOS:
+    build:
+      targets:
+        Now-iOS: all
+  Now-macOS:
+    build:
+      targets:
+        Now-macOS: all
