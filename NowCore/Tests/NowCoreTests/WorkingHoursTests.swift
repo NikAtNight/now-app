@@ -40,3 +40,40 @@ struct WorkingHoursTests {
         #expect(everyDay.workingSeconds(from: sunday, to: tuesday, calendar: vancouver) == 16 * 3600)
     }
 }
+
+struct InvalidWorkingHoursTests {
+    static let invalid = [
+        WorkingHours(isEnabled: true, weekdays: [], startMinute: 7 * 60 + 30),
+        WorkingHours(isEnabled: true, startMinute: 17 * 60, endMinute: 9 * 60),
+        WorkingHours(isEnabled: true, startMinute: 9 * 60, endMinute: 9 * 60),
+    ]
+
+    @Test func isValid() {
+        #expect(WorkingHours(isEnabled: true).isValid)
+        #expect(Self.invalid.allSatisfy { !$0.isValid })
+    }
+
+    @Test(arguments: invalid)
+    func timeRemainingFallsBackToWallClock(_ hours: WorkingHours) {
+        let ranking = RankingSettings(workingHours: hours)
+        let due = date(2026, 9, 26, 10) // Saturday, 48h away.
+        #expect(ranking.timeRemaining(until: due, now: now, calendar: utc) == 48 * 3600)
+    }
+
+    @Test(arguments: invalid)
+    func dateOnlyTasksAreDueAt2359(_ hours: WorkingHours) {
+        #expect(RankingSettings(workingHours: hours).dateOnlyDueMinute == 23 * 60 + 59)
+    }
+
+    @Test(arguments: invalid)
+    func mutedAlertsAreNotMoved(_ hours: WorkingHours) {
+        let due = date(2026, 9, 24, 21)
+        let result = NotificationPlanner.plan([task("t", due: due)], now: now, ranking: RankingSettings(workingHours: hours), notifications: NotificationSettings(muteOutsideWorkingHours: true), calendar: utc)
+        #expect(result.map(\.fireDate) == [due.addingTimeInterval(-3600), due])
+    }
+
+    @Test(arguments: invalid)
+    func morningIsNine(_ hours: WorkingHours) {
+        #expect(QuickDate.tomorrowMorning.date(from: now, workingHours: hours, calendar: utc) == date(2026, 9, 25, 9))
+    }
+}

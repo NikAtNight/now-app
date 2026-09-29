@@ -32,3 +32,18 @@ extension Ranking {
     var focusTitles: [String] { focus.map(\.task.title) }
     var allTitles: [String] { all.map(\.task.title) }
 }
+
+/// America/Toronto. DST starts 2026-03-08 (23h day) and ends 2026-11-01 (25h day).
+let toronto: Calendar = {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "America/Toronto")!
+    return calendar
+}()
+
+/// Builds a Toronto local date.
+func torontoDate(_ year: Int, _ month: Int, _ day: Int, _ hour: Int = 0, _ minute: Int = 0) -> Date {
+    toronto.date(from: DateComponents(year: year, month: month, day: day, hour: hour, minute: minute))!
+}
+
+/// Toronto's two DST change days in 2026: spring forward, then fall back.
+let dstDays: [(month: Int, day: Int)] = [(3, 8), (11, 1)]

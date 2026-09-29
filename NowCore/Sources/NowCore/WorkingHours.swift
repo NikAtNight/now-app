@@ -17,14 +17,21 @@ public struct WorkingHours: Codable, Hashable, Sendable {
 
     public static let standard = WorkingHours()
 
-    private var isValid: Bool { !weekdays.isEmpty && endMinute > startMinute }
+    /// False when no weekdays are picked or the day ends at or before it starts.
+    public var isValid: Bool { !weekdays.isEmpty && endMinute > startMinute }
+
+    /// On and valid. Invalid working hours are treated as off.
+    var isActive: Bool { isEnabled && isValid }
+
+    /// When "morning" is, in minutes after midnight: the start of the workday when working hours
+    /// are on, otherwise 9:00. Used by the morning quick dates and date-only alerts.
+    public var morningMinute: Int { isActive ? startMinute : 9 * 60 }
 
     /// The working window on the day containing `date`, or nil if that day isn't a working day.
     public func window(on date: Date, calendar: Calendar) -> DateInterval? {
         guard isValid, weekdays.contains(calendar.component(.weekday, from: date)) else { return nil }
-        let day = calendar.startOfDay(for: date)
-        guard let start = calendar.date(byAdding: .minute, value: startMinute, to: day),
-              let end = calendar.date(byAdding: .minute, value: endMinute, to: day) else { return nil }
+        guard let start = calendar.date(atMinute: startMinute, on: date),
+              let end = calendar.date(atMinute: endMinute, on: date) else { return nil }
         return DateInterval(start: start, end: end)
     }
 

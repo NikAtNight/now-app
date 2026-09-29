@@ -12,6 +12,46 @@ struct SettingsView: View {
 
         Form {
             Section {
+                Picker("Appearance", selection: $settings.appearance) {
+                    ForEach(Appearance.allCases, id: \.self) { Text($0.label).tag($0) }
+                }
+                Picker("Priority Icons", selection: $settings.priorityStyle) {
+                    ForEach(PriorityStyle.allCases, id: \.self) { style in
+                        Text(style.label).tag(style)
+                    }
+                }
+                HStack(spacing: 18) {
+                    ForEach(Priority.allCases.dropFirst(), id: \.self) { priority in
+                        HStack(spacing: 5) {
+                            PriorityIcon(priority: priority)
+                            Text(priority.label).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .font(.subheadline)
+            }
+
+            #if os(macOS)
+            Section {
+                Picker("Show in Dock", selection: $settings.dockIcon) {
+                    ForEach(DockIconMode.allCases, id: \.self) { Text($0.label).tag($0) }
+                }
+                Toggle("Show in Menu Bar", isOn: $settings.showInMenuBar)
+                Picker("Quick Add Shortcut", selection: $settings.quickAddShortcut) {
+                    ForEach(QuickAddShortcut.allCases, id: \.self) { Text($0.label).tag($0) }
+                }
+            } header: {
+                Text("Mac")
+            } footer: {
+                if settings.dockIcon == .never && !settings.showInMenuBar {
+                    Text("Podium won't show anywhere. Open it with the widget, the quick add shortcut, or Spotlight.")
+                } else {
+                    Text("Without a Dock icon, Podium also stays out of ⌘Tab.")
+                }
+            }
+            #endif
+
+            Section {
                 Picker("Order By", selection: $settings.ranking.mode) {
                     ForEach(RankingMode.allCases, id: \.self) { Text($0.label).tag($0) }
                 }
@@ -48,13 +88,17 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .background { ListBackdrop() }
         .navigationTitle("Settings")
     }
 
-    /// Bridges minutes-after-midnight to a DatePicker.
+    /// Bridges minutes-after-midnight to a DatePicker. Sets the clock fields rather than adding
+    /// minutes to midnight, which is an hour off on daylight-saving days.
     private func minuteBinding(_ minutes: Binding<Int>) -> Binding<Date> {
         Binding {
-            Calendar.current.date(byAdding: .minute, value: minutes.wrappedValue, to: Calendar.current.startOfDay(for: .now)) ?? .now
+            let minute = minutes.wrappedValue
+            return Calendar.current.date(bySettingHour: minute / 60, minute: minute % 60, second: 0, of: .now) ?? .now
         } set: { date in
             let parts = Calendar.current.dateComponents([.hour, .minute], from: date)
             minutes.wrappedValue = (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
@@ -62,7 +106,8 @@ struct SettingsView: View {
     }
 }
 
-private struct WeekdayPicker: View {
+/// Toggle buttons for days of the week, in the locale's order. Used for working hours and custom repeats.
+struct WeekdayPicker: View {
     @Binding var weekdays: Set<Int>
 
     var body: some View {

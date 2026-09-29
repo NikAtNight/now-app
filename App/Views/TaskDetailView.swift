@@ -2,47 +2,75 @@ import NowCore
 import SwiftData
 import SwiftUI
 
-/// Reminders-style details sheet. Edits save as you go.
+/// Reminders-style task details: a popover on the ⓘ on Mac, a sheet on iPhone. Edits save as you go.
 struct TaskDetailView: View {
     @Bindable var task: TaskItem
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @State private var newSubtask = ""
+    @FocusState private var addingSubtask: Bool
+    /// Keeps the custom repeat fields open while a custom rule happens to match a preset.
+    @State private var editingCustomRepeat = false
 
-    private static let estimates = [15, 30, 45, 60, 90, 120, 180, 240, 480]
+    static let estimates = [15, 30, 45, 60, 90, 120, 180, 240, 480]
 
     var body: some View {
+        #if os(macOS)
+        form
+            .frame(width: 360)
+            .frame(minHeight: 420, idealHeight: 640)
+        #else
+        GlassSheet(title: "Details") { form }
+        #endif
+    }
+
+    private var form: some View {
         Form {
+            // Like Reminders: the title and notes lead, with no field labels.
             Section {
-                TextField("Title", text: $task.title)
-                    .font(.headline)
-                TextField("Notes", text: $task.notes, axis: .vertical)
-                    .lineLimit(1...6)
+                VStack(alignment: .leading, spacing: 6) {
+                    TextField("", text: $task.title, prompt: Text("Title"), axis: .vertical)
+                        .font(.title2.bold())
+                        .textFieldStyle(.plain)
+                        .labelsHidden()
+                    TextField("", text: $task.notes, prompt: Text("Notes"), axis: .vertical)
+                        .foregroundStyle(.secondary)
+                        .textFieldStyle(.plain)
+                        .labelsHidden()
+                        .lineLimit(1...6)
+                }
+                .padding(.vertical, 4)
             }
 
-            Section {
+            Section("Date & Time") {
                 Toggle(isOn: hasDate) { Label("Date", systemImage: "calendar") }
                 if task.dueDate != nil {
-                    DatePicker("Date", selection: dueDate, displayedComponents: .date)
+                    DatePicker("Date", selection: dueDay, displayedComponents: .date)
                 }
                 Toggle(isOn: hasTime) { Label("Time", systemImage: "clock") }
                 if task.hasDueTime {
                     DatePicker("Time", selection: dueDate, displayedComponents: .hourAndMinute)
                 }
+                Picker(selection: repeatChoice) {
+                    Text("Never").tag(RepeatChoice.never)
+                    ForEach(Recurrence.allCases, id: \.self) { Text($0.label).tag(RepeatChoice.preset($0)) }
+                    Divider()
+                    Text("Custom…").tag(RepeatChoice.custom)
+                } label: {
+                    Label("Repeat", systemImage: "repeat")
+                }
+                if repeatChoice.wrappedValue == .custom, let rule = task.recurrence {
+                    CustomRepeatFields(rule: rule) { task.recurrence = $0 }
+                }
             }
 
             Section {
                 Picker(selection: $task.priority) {
-                    ForEach(Priority.allCases, id: \.self) { Text($0.label).tag($0) }
+                    ForEach(Priority.allCases.reversed(), id: \.self) { PriorityLabel(priority: $0).tag($0) }
                 } label: {
                     Label("Priority", systemImage: "exclamationmark")
                 }
-                Picker(selection: $task.status) {
-                    ForEach(TaskStatus.allCases, id: \.self) { Text($0.label).tag($0) }
-                } label: {
-                    Label("Status", systemImage: "circle.dashed")
-                }
-                Picker(selection: $task.estimateMinutes) {
+                Picker(selection: Binding(get: { task.estimateMinutes }, set: { task.setEstimate($0) })) {
                     Text("None").tag(Int?.none)
                     ForEach(Self.estimates, id: \.self) { minutes in
                         Text(DueLabel.duration(TimeInterval(minutes * 60))).tag(Int?.some(minutes))
@@ -50,9 +78,22 @@ struct TaskDetailView: View {
                 } label: {
                     Label("Estimate", systemImage: "hourglass")
                 }
+                if let minutes = task.estimateMinutes, !task.isDone {
+                    Button {
+                        if task.isTimerRunning { task.stopTimer() } else { task.startTimer() }
+                    } label: {
+                        Label(task.isTimerRunning ? "Stop Timer" : "Start \(DueLabel.duration(TimeInterval(minutes * 60))) Timer",
+                              systemImage: task.isTimerRunning ? "stop.circle" : "timer")
+                    }
+                }
+            } header: {
+                Text("Organization")
             } footer: {
                 if task.estimateMinutes != nil {
-                    Text("With an estimate, the task shows up and alerts you when it's time to start, not when it's due.")
+                    // Date-only tasks alert once in the morning, so only timed ones get the start-time alert.
+                    Text(task.hasDueTime
+                         ? "With an estimate, the task shows up and alerts you when it's time to start, not when it's due."
+                         : "With an estimate, the task shows up when it's time to start, not when it's due.")
                 }
             }
 
@@ -72,26 +113,45 @@ struct TaskDetailView: View {
                     for index in offsets { context.delete(sorted[index]) }
                 }
                 TextField("Add Subtask", text: $newSubtask)
+                    .focused($addingSubtask)
                     .onSubmit(addSubtask)
             }
 
             Section {
                 Button("Delete Task", role: .destructive) {
-                    context.delete(task)
+                    task.moveToTrash()
                     dismiss()
                 }
+                .foregroundStyle(.red)
             }
         }
         .formStyle(.grouped)
-        .navigationTitle("Details")
-        #if os(iOS)
-        .navigationBarTitleDisplayMode(.inline)
-        #else
-        .frame(minWidth: 420, minHeight: 560)
-        #endif
-        .toolbar {
-            ToolbarItem(placement: .confirmationAction) {
-                Button("Done") { dismiss() }
+        .scrollContentBackground(.hidden)
+    }
+
+    enum RepeatChoice: Hashable {
+        case never, preset(Recurrence), custom
+    }
+
+    private var repeatChoice: Binding<RepeatChoice> {
+        Binding {
+            guard let rule = task.recurrence else { return .never }
+            return editingCustomRepeat || !rule.isPreset ? .custom : .preset(rule)
+        } set: { choice in
+            switch choice {
+            case .never:
+                editingCustomRepeat = false
+                task.recurrence = nil
+            case .preset(let rule):
+                editingCustomRepeat = false
+                task.recurrence = rule
+            case .custom:
+                editingCustomRepeat = true
+                if task.recurrence == nil {
+                    // Start from "every week on this day", the most common custom rule.
+                    let day = Calendar.current.component(.weekday, from: task.dueDate ?? .now)
+                    task.recurrence = Recurrence(unit: .week, weekdays: [day])
+                }
             }
         }
     }
@@ -101,10 +161,9 @@ struct TaskDetailView: View {
             task.dueDate != nil
         } set: { on in
             if on {
-                task.dueDate = task.dueDate ?? Calendar.current.startOfDay(for: .now)
+                if task.dueDate == nil { task.setDueDate(TaskItem.dateOnly(.now)) }
             } else {
-                task.dueDate = nil
-                task.hasDueTime = false
+                task.clearDueDate()
             }
         }
     }
@@ -114,18 +173,33 @@ struct TaskDetailView: View {
             task.hasDueTime
         } set: { on in
             if on {
-                // Default to the next full hour on the chosen day, like Reminders.
+                // Default to the next full hour, like Reminders. For today that can roll over to
+                // tomorrow (turning Time on at 23:30 gives tomorrow 00:00, not a time that has passed).
                 let calendar = Calendar.current
-                let day = task.dueDate ?? .now
-                let nextHour = calendar.component(.hour, from: .now) + 1
-                task.dueDate = calendar.date(bySettingHour: min(nextHour, 23), minute: 0, second: 0, of: day)
+                let now = Date.now
+                let nextHour = calendar.dateInterval(of: .hour, for: now).map(\.end) ?? now
+                let day = task.dueDate ?? now
+                if calendar.isDate(day, inSameDayAs: now) {
+                    task.setDueDate(nextHour)
+                } else {
+                    let hour = calendar.component(.hour, from: nextHour)
+                    task.setDueDate(calendar.date(bySettingHour: hour, minute: 0, second: 0, of: day) ?? day)
+                }
+            } else if let due = task.dueDate {
+                task.setDueDate(TaskItem.dateOnly(due))
             }
             task.hasDueTime = on
         }
     }
 
     private var dueDate: Binding<Date> {
-        Binding { task.dueDate ?? .now } set: { task.dueDate = $0 }
+        Binding { task.dueDate ?? .now } set: { task.setDueDate($0) }
+    }
+
+    /// The Date picker only picks the day. `setDueDay` keeps the time, or noon for a date-only task,
+    /// rather than whatever time the picker hands back.
+    private var dueDay: Binding<Date> {
+        Binding { task.dueDate ?? .now } set: { task.setDueDay($0) }
     }
 
     private func addSubtask() {
@@ -135,6 +209,8 @@ struct TaskDetailView: View {
         context.insert(subtask)
         subtask.parent = task
         newSubtask = ""
+        // Stay in the field so the next subtask can be typed straight away, like Reminders.
+        addingSubtask = true
     }
 }
 
@@ -150,5 +226,45 @@ private struct SubtaskEditor: View {
             .buttonStyle(.borderless)
             TextField("Subtask", text: $subtask.title)
         }
+    }
+}
+
+/// Frequency, "every N", and weekdays for a custom repeat, like Reminders' Custom repeat.
+private struct CustomRepeatFields: View {
+    let rule: Recurrence
+    let onChange: (Recurrence) -> Void
+
+    var body: some View {
+        Picker("Frequency", selection: Binding(get: { rule.unit }, set: { unit in
+            onChange(Recurrence(unit: unit, interval: rule.interval, weekdays: unit == .week ? rule.weekdays : []))
+        })) {
+            Text("Daily").tag(Recurrence.Unit.day)
+            Text("Weekly").tag(Recurrence.Unit.week)
+            Text("Monthly").tag(Recurrence.Unit.month)
+            Text("Yearly").tag(Recurrence.Unit.year)
+        }
+        Stepper(value: Binding(get: { rule.interval }, set: { interval in
+            onChange(Recurrence(unit: rule.unit, interval: interval, weekdays: rule.weekdays))
+        }), in: 1...99) {
+            Text("Every \(rule.interval) \(unitName(rule.unit, count: rule.interval))")
+        }
+        if rule.unit == .week {
+            WeekdayPicker(weekdays: Binding(get: { rule.weekdays }, set: { days in
+                onChange(Recurrence(unit: .week, interval: rule.interval, weekdays: days))
+            }))
+        }
+        Text(rule.label)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+    }
+
+    private func unitName(_ unit: Recurrence.Unit, count: Int) -> String {
+        let (one, many) = switch unit {
+        case .day: ("day", "days")
+        case .week: ("week", "weeks")
+        case .month: ("month", "months")
+        case .year: ("year", "years")
+        }
+        return count == 1 ? one : many
     }
 }

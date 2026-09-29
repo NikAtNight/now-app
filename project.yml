@@ -1,10 +1,10 @@
-# Generate Now.xcodeproj with: xcodegen generate
-name: Now
+# Generate Podium.xcodeproj with: xcodegen generate
+name: Podium
 options:
-  bundleIdPrefix: com.nikhilkapadia
+  bundleIdPrefix: com.talix
   deploymentTarget:
-    iOS: "18.0"
-    macOS: "15.0"
+    iOS: "26.0"
+    macOS: "26.0"
   createIntermediateGroups: true
 
 settings:
@@ -12,15 +12,14 @@ settings:
     SWIFT_VERSION: "5.0"
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
-    DEVELOPMENT_TEAM: ""  # Set to your Apple Developer team ID.
+    DEVELOPMENT_TEAM: 2TG5HP8NSV
     CODE_SIGN_STYLE: Automatic
-    PRODUCT_NAME: Now
-    PRODUCT_BUNDLE_IDENTIFIER: com.nikhilkapadia.now
+    PRODUCT_NAME: Podium
+    PRODUCT_BUNDLE_IDENTIFIER: com.talix.now
     GENERATE_INFOPLIST_FILE: YES
-    INFOPLIST_KEY_CFBundleDisplayName: Now
+    INFOPLIST_KEY_CFBundleDisplayName: Podium
     INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
     ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-    ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
     ENABLE_USER_SCRIPT_SANDBOXING: YES
 
 packages:
@@ -28,37 +27,78 @@ packages:
     path: NowCore
 
 targets:
-  Now-iOS:
+  Podium-iOS:
     type: application
     platform: iOS
-    sources: [App, Resources]
+    sources: [App, Shared, Resources]
     dependencies:
       - package: NowCore
+      - target: PodiumWidgets-iOS
     settings:
       base:
         TARGETED_DEVICE_FAMILY: "1"
         INFOPLIST_FILE: Config/Info-iOS.plist
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
-        CODE_SIGN_ENTITLEMENTS: Config/Now-iOS.entitlements
+        CODE_SIGN_ENTITLEMENTS: Config/Podium-iOS.entitlements
 
-  Now-macOS:
+  Podium-macOS:
     type: application
     platform: macOS
-    sources: [App, Resources]
+    sources: [App, Shared, Resources]
     dependencies:
       - package: NowCore
+      - target: PodiumWidgets-macOS
     settings:
       base:
-        CODE_SIGN_ENTITLEMENTS: Config/Now-macOS.entitlements
+        CODE_SIGN_ENTITLEMENTS: Config/Podium-macOS.entitlements
+        INFOPLIST_FILE: Config/Info-macOS.plist
+        ENABLE_HARDENED_RUNTIME: YES
+
+  # Widgets and the timer Live Activity. They share the task store through the App Group.
+  PodiumWidgets-iOS:
+    type: app-extension
+    platform: iOS
+    sources: [Widgets, Shared, App/Models/TaskItem.swift]
+    dependencies:
+      - package: NowCore
+    info:
+      path: Widgets/Info.plist
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_NAME: PodiumWidgets
+        PRODUCT_BUNDLE_IDENTIFIER: com.talix.now.widgets
+        INFOPLIST_KEY_CFBundleDisplayName: Podium
+        CODE_SIGN_ENTITLEMENTS: Config/PodiumWidgets-iOS.entitlements
+
+  PodiumWidgets-macOS:
+    type: app-extension
+    platform: macOS
+    sources: [Widgets, Shared, App/Models/TaskItem.swift]
+    dependencies:
+      - package: NowCore
+    info:
+      path: Widgets/Info.plist
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_NAME: PodiumWidgets
+        PRODUCT_BUNDLE_IDENTIFIER: com.talix.now.widgets
+        INFOPLIST_KEY_CFBundleDisplayName: Podium
+        CODE_SIGN_ENTITLEMENTS: Config/PodiumWidgets-macOS.entitlements
         ENABLE_HARDENED_RUNTIME: YES
 
 schemes:
-  Now-iOS:
+  Podium-iOS:
     build:
       targets:
-        Now-iOS: all
-  Now-macOS:
+        Podium-iOS: all
+  Podium-macOS:
     build:
       targets:
-        Now-macOS: all
+        Podium-macOS: all

@@ -26,6 +26,34 @@ struct NotificationPlannerTests {
         #expect(result.map(\.kind) == [.due])
     }
 
+    @Test func dateOnlyTasksAlertOnceInTheMorning() {
+        // Not at 22:59 and 23:59, when a date-only task's deadline falls. That moment only gets a
+        // silent badge update.
+        let result = plan([task("t", due: date(2026, 9, 25, 12), hasTime: false)])
+        #expect(result.map(\.kind) == [.due, .overdueBadge])
+        #expect(result.map(\.fireDate) == [date(2026, 9, 25, 9), date(2026, 9, 25, 23, 59)])
+    }
+
+    @Test func dateOnlyMorningFollowsWorkingHours() {
+        let ranking = RankingSettings(workingHours: WorkingHours(isEnabled: true, startMinute: 8 * 60))
+        let result = plan([task("t", due: date(2026, 9, 25, 12), hasTime: false)], ranking: ranking)
+        #expect(result.map(\.fireDate) == [date(2026, 9, 25, 8), date(2026, 9, 25, 17)])
+    }
+
+    @Test func dateOnlyTaskForTodayPastTheMorningOnlyUpdatesTheBadge() {
+        let result = plan([task("t", due: date(2026, 9, 24, 12), hasTime: false)])
+        #expect(result.map(\.kind) == [.overdueBadge])
+    }
+
+    @Test func badgeUpdatesAreNotHeldForWorkingHours() {
+        // Silent, so there's nothing to hold back. Saturday's task still counts as overdue on Saturday night.
+        let ranking = RankingSettings(workingHours: WorkingHours(isEnabled: true))
+        let saturday = task("t", due: date(2026, 9, 26, 12), hasTime: false)
+        let result = plan([saturday], ranking: ranking, notifications: NotificationSettings(muteOutsideWorkingHours: true))
+        #expect(result.map(\.kind) == [.overdueBadge, .due])
+        #expect(result.map(\.fireDate) == [date(2026, 9, 26, 17), date(2026, 9, 28, 9)])
+    }
+
     @Test func undatedAndDoneTasksGetNothing() {
         #expect(plan([task("undated"), task("done", due: now.addingTimeInterval(7200), status: .done)]).isEmpty)
     }

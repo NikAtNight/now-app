@@ -8,17 +8,23 @@ struct NowApp: App {
     @State private var settings: AppSettings
 
     init() {
-        let schema = Schema([TaskItem.self, Subtask.self])
-        // .automatic syncs through the CloudKit container in the entitlements, and stays local without one.
-        let configuration = ModelConfiguration(schema: schema, cloudKitDatabase: .automatic)
         do {
-            container = try ModelContainer(for: schema, configurations: configuration)
+            // Syncs through the CloudKit container in the entitlements, and stays local without one.
+            container = try SharedStore.makeContainer(cloudKit: true)
         } catch {
             fatalError("Could not open the task store: \(error)")
         }
         let settings = AppSettings()
         _settings = State(initialValue: settings)
-        NotificationService.shared.configure(container: container, settings: settings)
+        NotificationService.shared.configure(container: container)
+        Refresher.shared.start(container: container, settings: settings)
+        SharedStore.appContainer = container
+        SharedStore.afterIntentChange = { await Refresher.shared.refreshNow() }
+        #if os(macOS)
+        QuickAddController.shared.start(container: container, shortcut: settings.quickAddShortcut)
+        TextInputSettings.install()
+        DockIconController.shared.start(mode: settings.dockIcon)
+        #endif
     }
 
     var body: some Scene {
@@ -27,6 +33,12 @@ struct NowApp: App {
         }
         .modelContainer(container)
         .environment(settings)
+        #if os(iOS)
+        .backgroundTask(.appRefresh(Refresher.backgroundTaskID)) {
+            await Refresher.shared.refreshNow()
+            await Refresher.scheduleBackgroundRefresh()
+        }
+        #endif
         #if os(macOS)
         .defaultSize(width: 520, height: 680)
         .commands {
@@ -44,56 +56,72 @@ struct NowApp: App {
                 .environment(settings)
         }
 
-        MenuBarExtra("Now", systemImage: "checklist") {
+        MenuBarExtra(isInserted: Binding(get: { settings.showInMenuBar }, set: { settings.showInMenuBar = $0 })) {
             MenuBarView()
                 .modelContainer(container)
                 .environment(settings)
+        } label: {
+            MenuBarLabel()
         }
         .menuBarExtraStyle(.window)
         #endif
     }
 }
 
+#if os(iOS)
+extension Appearance {
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: nil
+        case .light: .light
+        case .dark: .dark
+        }
+    }
+}
+#endif
+
 extension Notification.Name {
     static let newTaskRequested = Notification.Name("NowNewTaskRequested")
 }
 
-/// Keeps notifications in step with the data. Lives above the list so it runs on every platform.
+/// The main window. Side effects like notifications live in `Refresher`, not here, so they keep
+/// working with no window open.
 struct RootView: View {
     @Environment(AppSettings.self) private var settings
     @Environment(\.scenePhase) private var scenePhase
-    @Query private var tasks: [TaskItem]
-    @State private var activations = 0
 
     var body: some View {
         NavigationStack {
             TaskListView()
         }
+        #if os(macOS)
+        // The same material as the details popover, so the two match and nothing shifts when it opens.
+        .containerBackground(.clear, for: .window)
+        .background { PopoverMaterial().ignoresSafeArea() }
+        #endif
+        #if os(iOS)
+        .preferredColorScheme(settings.appearance.colorScheme)
+        #endif
+        // A widget click arrives as podium://open. This window takes it if it's open (rather than
+        // SwiftUI opening another); if the Mac app is running with no window, SwiftUI opens one.
+        .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
+        .onOpenURL { _ in
+            #if os(macOS)
+            // Bring the window up top, not just the app.
+            NSApp.activate()
+            NSApp.windows.first { $0.isVisible && $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
+            #endif
+        }
         .task { await NotificationService.shared.requestAuthorization() }
-        .task(id: syncKey) {
-            await NotificationService.shared.sync(tasks: tasks.map(\.snapshot), settings: settings)
-        }
         .onChange(of: scenePhase) { _, phase in
+            switch phase {
             // Pending notifications are capped, so re-plan whenever the app comes back.
-            if phase == .active { activations += 1 }
+            case .active: Refresher.shared.refresh()
+            #if os(iOS)
+            case .background: Refresher.scheduleBackgroundRefresh()
+            #endif
+            default: break
+            }
         }
-    }
-
-    private struct SyncKey: Equatable {
-        let tasks: [TaskSnapshot]
-        let ranking: RankingSettings
-        let notifications: NotificationSettings
-        let notifyHere: Bool
-        let activations: Int
-    }
-
-    private var syncKey: SyncKey {
-        SyncKey(
-            tasks: tasks.map(\.snapshot),
-            ranking: settings.ranking,
-            notifications: settings.notifications,
-            notifyHere: settings.notifyOnThisDevice,
-            activations: activations
-        )
     }
 }

@@ -15,22 +15,22 @@ public struct RankingSettings: Codable, Hashable, Sendable {
     }
 
     /// Minutes after midnight that a date-only task is due.
-    /// End of the working day when working hours are on, otherwise 23:59.
+    /// End of the working day when working hours are on and valid, otherwise 23:59.
     public var dateOnlyDueMinute: Int {
-        workingHours.isEnabled ? workingHours.endMinute : 23 * 60 + 59
+        workingHours.isActive ? workingHours.endMinute : 23 * 60 + 59
     }
 
     /// Resolves the moment a task is actually due.
     public func effectiveDue(for task: TaskSnapshot, calendar: Calendar) -> Date? {
         guard let due = task.dueDate else { return nil }
         if task.hasDueTime { return due }
-        return calendar.date(byAdding: .minute, value: dateOnlyDueMinute, to: calendar.startOfDay(for: due))
+        return calendar.date(atMinute: dateOnlyDueMinute, on: due)
     }
 
-    /// Time left until `due`, in working time when working hours are on. Negative when overdue.
+    /// Time left until `due`, in working time when working hours are on and valid. Negative when overdue.
     public func timeRemaining(until due: Date, now: Date, calendar: Calendar) -> TimeInterval {
         if due <= now { return due.timeIntervalSince(now) }
-        guard workingHours.isEnabled else { return due.timeIntervalSince(now) }
+        guard workingHours.isActive else { return due.timeIntervalSince(now) }
         return workingHours.workingSeconds(from: now, to: due, calendar: calendar)
     }
 }

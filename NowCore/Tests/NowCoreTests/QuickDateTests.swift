@@ -20,6 +20,12 @@ struct QuickDateTests {
         #expect(QuickDate.nextWeek.date(from: date(2026, 9, 28, 10), workingHours: hours, calendar: utc) == date(2026, 10, 5, 9))
     }
 
+    @Test func thisMorningOnlyBeforeTheMorning() {
+        // At 01:30 "Tomorrow Morning" is a day and a half away, so this morning gets its own preset.
+        #expect(QuickDate.thisMorning.date(from: date(2026, 9, 24, 1, 30), workingHours: hours, calendar: utc) == date(2026, 9, 24, 9))
+        #expect(QuickDate.thisMorning.date(from: now, workingHours: hours, calendar: utc) == nil)
+    }
+
     @Test func morningFollowsWorkingHours() {
         let early = WorkingHours(isEnabled: true, startMinute: 7 * 60 + 30)
         #expect(QuickDate.tomorrowMorning.date(from: now, workingHours: early, calendar: utc) == date(2026, 9, 25, 7, 30))
