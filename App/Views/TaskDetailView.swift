@@ -33,7 +33,7 @@ struct TaskDetailView: View {
                         .font(.title2.bold())
                         .textFieldStyle(.plain)
                         .labelsHidden()
-                    TextField("", text: $task.notes, prompt: Text("Notes"), axis: .vertical)
+                    NotesField(text: $task.notes)
                         .foregroundStyle(.secondary)
                         .textFieldStyle(.plain)
                         .labelsHidden()

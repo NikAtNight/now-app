@@ -79,7 +79,7 @@ struct TaskRow: View {
                 }
 
                 if isEditing || !task.notes.isEmpty {
-                    TextField("Notes", text: $task.notes, axis: .vertical)
+                    NotesField(text: $task.notes)
                         .textFieldStyle(.plain)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)

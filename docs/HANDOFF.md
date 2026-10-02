@@ -192,6 +192,19 @@ Local setup facts:
 - **Found and fixed:** a right-click on a Mac task title opened the text field's menu instead of the task menu (`RightClickPassThrough` in `TaskRow.swift` catches right-clicks until the row is being edited). History on the Mac was 470 points wide in a 349-point window (`GlassSheet` now has a fixed width of 340). The widget took up to 15 minutes to show a task as overdue (its timeline now adds entries at each due and start-by time in the next two hours). Starting or stopping a timer took about 20 seconds to reach the menu bar, since `Refresher` waits for autosave (`startTimer` and `stopTimer` now save straight away).
 - **Still not checked:** the Mac menu bar panel, Mac row swipe actions, Mac desktop widgets, background refresh (debugger access is off on this Mac; it needs `sudo DevToolsSecurity -enable`), and sync between two devices.
 
+## Change 9: lists in notes (session 6, 2026-10-02)
+
+**Why.** Nikhil couldn't make a bulleted list in a task's notes, and Reminders supports it (screenshot of a note starting "* Ask her questions", 2026-10-02).
+
+**What.**
+- On the Mac, Return in a vertical `TextField` submits instead of adding a line, so notes could never get a second line. `NotesField` (`App/Views/NotesField.swift`, used by `TaskRow` and `TaskDetailView`) handles Return itself with `onKeyPress` and places the cursor through a `TextSelection` binding.
+- `NoteList` in NowCore does the list editing on plain text, so notes stay a `String`. Lines starting with "• ", "- ", "* ", or "1. " are list items. Return starts the next item (numbers count up), Return on an empty item ends the list, and "- " or "* " typed at the start of a line becomes "• ".
+- iPhone types Return into the text, so there the newline arrives as a change. A newline typed next to another one is ambiguous, and it's read as Return at the end of the line before.
+
+**Checked.** NowCore: 93 tests pass. Mac and iPhone simulator Debug builds pass. `NotesField` was driven in an offscreen window with in-process key events: typing a list, ending it, and Return in the middle of a list all give the right text and cursor.
+
+**Not checked.** By hand in the running app on either platform.
+
 ---
 
 ## Remaining work
